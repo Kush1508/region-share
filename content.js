@@ -1,7 +1,7 @@
 /**
  * Region Share - Content Script
- * Handles DOM element inspection, custom Shift+drag rectangle cropping,
- * and real-time bounding rect tracking for dynamic elements.
+ * High-performance DOM inspector and arbitrary drag cropper.
+ * Uses elementsFromPoint for zero-layout-thrashing hit testing across all websites.
  */
 
 (() => {
@@ -19,10 +19,12 @@
   let highlightBox = null;
   let dragBox = null;
   let tooltip = null;
+  let topBar = null;
   let currentHoveredElement = null;
 
-  // Drag state
-  let isDragging = false;
+  // Pointer & Drag state
+  let isPointerDown = false;
+  let hasDragged = false;
   let startX = 0;
   let startY = 0;
   let currentRect = null;
@@ -53,6 +55,24 @@
   }
 
   /**
+   * Robust hit-testing using elementsFromPoint so we penetrate cleanly through the overlay
+   */
+  function getElementUnderPoint(x, y) {
+    try {
+      const elements = document.elementsFromPoint(x, y) || [];
+      return elements.find(el => (
+        el &&
+        el !== overlayHost &&
+        el !== document.documentElement &&
+        el !== document.body &&
+        !overlayHost?.contains(el)
+      ));
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /**
    * Creates the isolated Shadow DOM overlay
    */
   function createOverlay() {
@@ -80,19 +100,70 @@
         inset: 0;
         width: 100vw;
         height: 100vh;
-        background: rgba(15, 23, 42, 0.12);
+        background: rgba(15, 23, 42, 0.16);
         cursor: crosshair;
         pointer-events: auto;
+      }
+      .top-bar {
+        position: fixed;
+        top: 14px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 30;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        background: rgba(15, 23, 42, 0.94);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid rgba(56, 189, 248, 0.4);
+        border-radius: 9999px;
+        padding: 6px 16px;
+        box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.6), 0 0 15px rgba(56, 189, 248, 0.25);
+        color: #f8fafc;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        font-size: 13px;
+        pointer-events: auto;
+        user-select: none;
+      }
+      .top-badge {
+        font-weight: 700;
+        color: #38bdf8;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .top-instruction {
+        color: #cbd5e1;
+        font-size: 12px;
+      }
+      .top-instruction strong {
+        color: #ffffff;
+      }
+      .top-cancel-btn {
+        background: rgba(239, 68, 68, 0.2);
+        border: 1px solid rgba(239, 68, 68, 0.4);
+        color: #fca5a5;
+        border-radius: 6px;
+        padding: 3px 10px;
+        font-size: 11px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.15s ease;
+      }
+      .top-cancel-btn:hover {
+        background: rgba(239, 68, 68, 0.4);
+        color: #ffffff;
       }
       .highlight-box {
         position: fixed;
         pointer-events: none;
         box-sizing: border-box;
         border: 2px solid #00d2ff;
-        background: rgba(0, 210, 255, 0.1);
-        box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6), 0 0 18px rgba(0, 210, 255, 0.45);
-        border-radius: 3px;
-        transition: all 0.05s ease-out;
+        background: rgba(0, 210, 255, 0.12);
+        box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6), 0 0 20px rgba(0, 210, 255, 0.5);
+        border-radius: 4px;
+        transition: all 0.04s ease-out;
         display: none;
         z-index: 10;
       }
@@ -101,9 +172,9 @@
         pointer-events: none;
         box-sizing: border-box;
         border: 2px dashed #38bdf8;
-        background: rgba(56, 189, 248, 0.18);
-        box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5), 0 0 16px rgba(56, 189, 248, 0.35);
-        border-radius: 2px;
+        background: rgba(56, 189, 248, 0.2);
+        box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5), 0 0 20px rgba(56, 189, 248, 0.4);
+        border-radius: 3px;
         display: none;
         z-index: 11;
       }
@@ -124,21 +195,20 @@
         position: fixed;
         pointer-events: none;
         z-index: 20;
-        background: rgba(15, 23, 42, 0.94);
-        backdrop-filter: blur(8px);
-        -webkit-backdrop-filter: blur(8px);
+        background: rgba(15, 23, 42, 0.95);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
         color: #f8fafc;
         padding: 7px 12px;
         border-radius: 8px;
-        border: 1px solid rgba(255, 255, 255, 0.15);
-        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 0 1px rgba(255, 255, 255, 0.2);
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.6);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         font-size: 12px;
         line-height: 1.4;
         white-space: nowrap;
         display: none;
-        transform: translateY(0);
-        transition: opacity 0.1s ease;
+        user-select: none;
       }
       .tooltip .title {
         font-weight: 600;
@@ -149,24 +219,21 @@
       }
       .tooltip .dims {
         display: inline-block;
-        background: rgba(255, 255, 255, 0.12);
+        background: rgba(255, 255, 255, 0.15);
         padding: 1px 6px;
         border-radius: 4px;
         font-size: 11px;
         color: #e2e8f0;
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        font-family: ui-monospace, SFMono-Regular, monospace;
         margin-left: 6px;
       }
       .tooltip .hints {
         color: #94a3b8;
         font-size: 11px;
         margin-top: 3px;
-        display: flex;
-        align-items: center;
-        gap: 6px;
       }
       .tooltip .kbd {
-        background: rgba(255, 255, 255, 0.15);
+        background: rgba(255, 255, 255, 0.2);
         color: #f1f5f9;
         padding: 0 4px;
         border-radius: 3px;
@@ -177,6 +244,19 @@
 
     backdrop = document.createElement('div');
     backdrop.className = 'backdrop';
+
+    // Top instruction pill
+    topBar = document.createElement('div');
+    topBar.className = 'top-bar';
+    topBar.innerHTML = `
+      <span class="top-badge">🎯 Region Share</span>
+      <span class="top-instruction"><strong>Click</strong> an element, or <strong>Drag</strong> any box to crop</span>
+      <button class="top-cancel-btn" title="Cancel Selection">Cancel (Esc)</button>
+    `;
+    topBar.querySelector('.top-cancel-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      stopSelection();
+    });
 
     highlightBox = document.createElement('div');
     highlightBox.className = 'highlight-box';
@@ -194,15 +274,16 @@
 
     shadowRoot.appendChild(style);
     shadowRoot.appendChild(backdrop);
+    shadowRoot.appendChild(topBar);
     shadowRoot.appendChild(highlightBox);
     shadowRoot.appendChild(dragBox);
     shadowRoot.appendChild(tooltip);
 
     document.documentElement.appendChild(overlayHost);
 
-    // Attach listeners
-    backdrop.addEventListener('pointermove', onPointerMove);
+    // Attach pointer listeners on backdrop
     backdrop.addEventListener('pointerdown', onPointerDown);
+    backdrop.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup', onPointerUp);
     window.addEventListener('keydown', onKeyDown, true);
   }
@@ -225,18 +306,15 @@
 
     const ttWidth = tooltip.offsetWidth || 280;
     const ttHeight = tooltip.offsetHeight || 50;
-    const margin = 10;
+    const margin = 12;
 
     let left = rect.left + (rect.width / 2) - (ttWidth / 2);
-    // Keep horizontally in viewport
     left = Math.max(margin, Math.min(window.innerWidth - ttWidth - margin, left));
 
     let top = rect.top - ttHeight - margin;
     if (top < margin) {
-      // Not enough room above, place below
       top = rect.top + rect.height + margin;
       if (top + ttHeight > window.innerHeight - margin) {
-        // Place inside rect if too large
         top = Math.max(margin, rect.top + margin);
       }
     }
@@ -246,52 +324,61 @@
   }
 
   /**
-   * Pointer move: handles both element hover inspection and Shift+drag box expansion
+   * Pointer down: initiates click tracking or drag selection
+   */
+  function onPointerDown(e) {
+    if (!isSelectionActive) return;
+    isPointerDown = true;
+    hasDragged = false;
+    startX = e.clientX;
+    startY = e.clientY;
+  }
+
+  /**
+   * Pointer move: handles both element hover inspection and click+drag custom box
    */
   function onPointerMove(e) {
     if (!isSelectionActive) return;
 
-    if (isDragging) {
-      // Custom rectangle drag mode
-      const currentX = e.clientX;
-      const currentY = e.clientY;
+    // Check if dragging a custom rectangle
+    if (isPointerDown) {
+      const dx = Math.abs(e.clientX - startX);
+      const dy = Math.abs(e.clientY - startY);
 
-      const left = Math.min(startX, currentX);
-      const top = Math.min(startY, currentY);
-      const width = Math.abs(currentX - startX);
-      const height = Math.abs(currentY - startY);
+      if (dx > 4 || dy > 4 || e.shiftKey) {
+        hasDragged = true;
 
-      currentRect = { x: left, y: top, width, height };
+        const left = Math.min(startX, e.clientX);
+        const top = Math.min(startY, e.clientY);
+        const width = Math.abs(e.clientX - startX);
+        const height = Math.abs(e.clientY - startY);
 
-      dragBox.style.left = `${left}px`;
-      dragBox.style.top = `${top}px`;
-      dragBox.style.width = `${width}px`;
-      dragBox.style.height = `${height}px`;
-      dragBox.style.display = 'block';
+        currentRect = { x: left, y: top, width, height };
 
-      if (highlightBox) highlightBox.style.display = 'none';
+        dragBox.style.left = `${left}px`;
+        dragBox.style.top = `${top}px`;
+        dragBox.style.width = `${width}px`;
+        dragBox.style.height = `${height}px`;
+        dragBox.style.display = 'block';
 
-      updateTooltipPosition(
-        { left, top, width, height },
-        'Custom Region',
-        `${Math.round(width)} × ${Math.round(height)} px`,
-        `Release to finish • <span class="kbd">Esc</span> to cancel`
-      );
-      return;
+        if (highlightBox) highlightBox.style.display = 'none';
+
+        updateTooltipPosition(
+          { left, top, width, height },
+          'Custom Region',
+          `${Math.round(width)} × ${Math.round(height)} px`,
+          `Release to crop • <span class="kbd">Esc</span> to cancel`
+        );
+        return;
+      }
     }
 
     // Hover mode: identify element under cursor
-    if (backdrop) backdrop.style.display = 'none';
-    const target = document.elementFromPoint(e.clientX, e.clientY);
-    if (backdrop) backdrop.style.display = 'block';
-
-    if (!target || target === document.documentElement || target === document.body || target === overlayHost) {
-      return;
-    }
+    const target = getElementUnderPoint(e.clientX, e.clientY);
+    if (!target) return;
 
     currentHoveredElement = target;
     const r = target.getBoundingClientRect();
-
     if (r.width <= 0 || r.height <= 0) return;
 
     currentRect = {
@@ -309,72 +396,42 @@
 
     const label = getElementLabel(target);
     const dims = `${Math.round(r.width)} × ${Math.round(r.height)} px`;
-    const hints = `Click to select • <span class="kbd">Shift+Drag</span> for custom box • <span class="kbd">Esc</span> to cancel`;
+    const hints = `Click to crop element • Drag across any area • <span class="kbd">Esc</span> to cancel`;
 
     updateTooltipPosition(r, label, dims, hints);
   }
 
   /**
-   * Pointer down: detects element click or Shift+drag initiation
+   * Pointer up: completes custom drag box selection or element click
    */
-  function onPointerDown(e) {
-    if (!isSelectionActive) return;
+  function onPointerUp(e) {
+    if (!isSelectionActive || !isPointerDown) return;
+    isPointerDown = false;
 
-    // Start custom box selection if Shift is held
-    if (e.shiftKey) {
-      isDragging = true;
-      startX = e.clientX;
-      startY = e.clientY;
-      currentHoveredElement = null;
-      if (highlightBox) highlightBox.style.display = 'none';
+    // Case 1: Custom rectangular drag completion
+    if (hasDragged && currentRect && currentRect.width >= 10 && currentRect.height >= 10) {
+      finalizeSelection({
+        isCustomRegion: true,
+        element: null,
+        rect: currentRect
+      });
       return;
     }
 
-    // Direct hit test on click
-    if (backdrop) backdrop.style.display = 'none';
-    const target = document.elementFromPoint(e.clientX, e.clientY);
-    if (backdrop) backdrop.style.display = 'block';
-
-    const selectedTarget = (target && target !== document.documentElement && target !== document.body && target !== overlayHost)
-      ? target
-      : currentHoveredElement;
-
-    if (selectedTarget) {
-      e.preventDefault();
-      e.stopPropagation();
-      const r = selectedTarget.getBoundingClientRect();
+    // Case 2: Direct click on element
+    const target = getElementUnderPoint(e.clientX, e.clientY) || currentHoveredElement;
+    if (target) {
+      const r = target.getBoundingClientRect();
       finalizeSelection({
         isCustomRegion: false,
-        element: selectedTarget,
+        element: target,
         rect: { x: r.left, y: r.top, width: r.width, height: r.height }
       });
     }
   }
 
   /**
-   * Pointer up: completes custom drag box selection
-   */
-  function onPointerUp(e) {
-    if (!isSelectionActive) return;
-
-    if (isDragging) {
-      isDragging = false;
-      if (currentRect && currentRect.width >= 15 && currentRect.height >= 15) {
-        finalizeSelection({
-          isCustomRegion: true,
-          element: null,
-          rect: currentRect
-        });
-      } else {
-        // Drag was too small, discard and resume hover inspection
-        if (dragBox) dragBox.style.display = 'none';
-        currentRect = null;
-      }
-    }
-  }
-
-  /**
-   * Key down: handles Esc cancellation and Shift status
+   * Key down: handles Esc cancellation
    */
   function onKeyDown(e) {
     if (!isSelectionActive) return;
@@ -396,7 +453,6 @@
     if (!isCustomRegion && element) {
       startDynamicTracking(element);
     } else if (isCustomRegion) {
-      // Track custom region with scroll offset
       startCustomRegionTracking(rect);
     }
 
@@ -425,7 +481,6 @@
 
   /**
    * Starts real-time tracking of an element's bounding rect
-   * (updates dynamically on scroll, resize, DOM layout shifts)
    */
   function startDynamicTracking(element) {
     cleanupTracking();
@@ -448,7 +503,6 @@
           height: Math.round(r.height)
         };
 
-        // Only send if coordinates actually changed
         if (
           !lastSentRect ||
           lastSentRect.x !== update.x ||
@@ -465,22 +519,16 @@
               height: window.innerHeight,
               devicePixelRatio: window.devicePixelRatio || 1
             }
-          }).catch(() => {
-            // Popup may have closed, ignore error
-          });
+          }).catch(() => {});
         }
       });
     };
 
-    // ResizeObserver on element
     try {
       trackedResizeObserver = new ResizeObserver(() => notifyUpdate());
       trackedResizeObserver.observe(trackedElement);
-    } catch (e) {
-      // Fallback
-    }
+    } catch (e) {}
 
-    // Scroll and window resize listeners
     trackedScrollHandler = () => notifyUpdate();
     window.addEventListener('scroll', trackedScrollHandler, { passive: true });
     window.addEventListener('resize', trackedScrollHandler, { passive: true });
@@ -568,11 +616,13 @@
       highlightBox = null;
       dragBox = null;
       tooltip = null;
+      topBar = null;
       backdrop = null;
     }
     currentHoveredElement = null;
     currentRect = null;
-    isDragging = false;
+    isPointerDown = false;
+    hasDragged = false;
   }
 
   /**

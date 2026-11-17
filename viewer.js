@@ -129,18 +129,24 @@
     startBtn.disabled = true;
 
     try {
-      // Trigger browser screen/tab capture dialog
-      mediaStream = await navigator.mediaDevices.getDisplayMedia({
-        video: {
-          displaySurface: 'browser',
-          frameRate: { ideal: 60, max: 60 },
-          width: { ideal: 3840 },
-          height: { ideal: 2160 }
-        },
-        audio: false,
-        preferCurrentTab: false,
-        selfBrowserSurface: 'exclude'
-      });
+      // Trigger browser screen/tab capture dialog with universal fallback
+      try {
+        mediaStream = await navigator.mediaDevices.getDisplayMedia({
+          video: {
+            displaySurface: 'browser',
+            frameRate: { ideal: 60, max: 60 }
+          },
+          audio: false
+        });
+      } catch (optErr) {
+        mediaStream = await navigator.mediaDevices.getDisplayMedia({
+          video: true,
+          audio: false
+        });
+      }
+
+      // Update window title so it's super easy to pick in Google Meet
+      document.title = 'Region Share - Cropped Stream (Share this window in Meet)';
 
       const videoTrack = mediaStream.getVideoTracks()[0];
       if (!videoTrack) {
