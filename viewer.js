@@ -59,6 +59,8 @@
       return;
     }
 
+    const streamId = params.get('streamId');
+
     try {
       const response = await chrome.runtime.sendMessage({
         action: 'GET_SESSION',
@@ -68,12 +70,58 @@
       if (response && response.session) {
         sessionData = response.session;
         applySessionData(sessionData);
+
+        // Auto-stream the cropped tab directly if streamId is available (zero prompt!)
+        const activeStreamId = streamId || sessionData.streamId;
+        if (activeStreamId) {
+          startTabCaptureDirect(activeStreamId);
+        }
       } else {
         statusMsg.textContent = 'Session data not found or expired. Please re-select the region.';
       }
     } catch (err) {
       console.warn('[Viewer] Could not retrieve session data:', err);
       statusMsg.textContent = 'Unable to connect to extension background service.';
+    }
+  }
+
+  /**
+   * Directly captures the source tab using streamId without showing any browser picker
+   */
+  async function startTabCaptureDirect(streamId) {
+    statusMsg.textContent = '';
+    try {
+      mediaStream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: {
+          mandatory: {
+            chromeMediaSource: 'tab',
+            chromeMediaSourceId: streamId
+          }
+        }
+      });
+
+      const videoTrack = mediaStream.getVideoTracks()[0];
+      if (!videoTrack) throw new Error('No video track from tab capture.');
+
+      videoTrack.onended = () => stopCapture('Source tab capture ended.');
+
+      document.title = 'Region Share - Cropped Stream (Share this window in Meet)';
+
+      sourceVideo.srcObject = mediaStream;
+      await sourceVideo.play();
+
+      isStreaming = true;
+
+      // Reveal live canvas & HUD, hide setup UI
+      setupCard.classList.add('hidden');
+      cropCanvas.classList.remove('hidden');
+      streamHud.classList.remove('hidden');
+
+      resetHudTimer();
+      startCropperLoop();
+    } catch (err) {
+      console.warn('[Viewer] Direct tab capture fallback:', err);
     }
   }
 

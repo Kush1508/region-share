@@ -122,9 +122,26 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
  */
 async function handleOpenViewer(selection, sourceTab) {
   const sessionId = 'rs_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
+  let streamId = null;
+  if (sourceTab && sourceTab.id && chrome.tabCapture && chrome.tabCapture.getMediaStreamId) {
+    try {
+      streamId = await new Promise((resolve) => {
+        chrome.tabCapture.getMediaStreamId({ targetTabId: sourceTab.id }, (id) => {
+          if (chrome.runtime.lastError || !id) {
+            resolve(null);
+          } else {
+            resolve(id);
+          }
+        });
+      });
+    } catch (e) {
+      console.warn('[Region Share] tabCapture streamId info:', e);
+    }
+  }
 
   const sessionData = {
     sessionId,
+    streamId,
     sourceTabId: sourceTab ? sourceTab.id : null,
     sourceTabTitle: sourceTab ? (sourceTab.title || 'Selected Tab') : 'Screen / Window Cropper',
     sourceTabUrl: sourceTab ? sourceTab.url : '',
@@ -156,7 +173,7 @@ async function handleOpenViewer(selection, sourceTab) {
   const windowHeight = targetHeight + 36;
 
   try {
-    const popupUrl = chrome.runtime.getURL(`viewer.html?session=${encodeURIComponent(sessionId)}`);
+    const popupUrl = chrome.runtime.getURL(`viewer.html?session=${encodeURIComponent(sessionId)}&streamId=${encodeURIComponent(streamId || '')}`);
     const win = await chrome.windows.create({
       url: popupUrl,
       type: 'popup',
