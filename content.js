@@ -279,7 +279,8 @@
     shadowRoot.appendChild(dragBox);
     shadowRoot.appendChild(tooltip);
 
-    document.documentElement.appendChild(overlayHost);
+    const mountTarget = document.body || document.documentElement;
+    mountTarget.appendChild(overlayHost);
 
     // Attach pointer listeners on backdrop
     backdrop.addEventListener('pointerdown', onPointerDown);

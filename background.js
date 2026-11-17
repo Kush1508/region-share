@@ -48,16 +48,8 @@ chrome.action.onClicked.addListener(triggerTabSelection);
 async function triggerTabSelection(tab) {
   if (!tab || !tab.id) return;
 
-  // If the user is on the demo.html page, toggle selection directly on it
-  if (tab.url && tab.url.includes('demo.html')) {
-    try {
-      await chrome.tabs.sendMessage(tab.id, { action: 'TOGGLE_SELECTION' });
-    } catch (e) {}
-    return;
-  }
-
-  // If the user clicks on an internal browser page (e.g. chrome://extensions or new tab),
-  // open the interactive Demo/Test page so they immediately have a real webpage to crop!
+  // If on an internal browser page where content scripts cannot run (e.g. chrome:// or new tab),
+  // open the Cropped Screen Studio popup directly so the user can crop any screen or window!
   if (
     !tab.url ||
     tab.url.startsWith('chrome://') ||
@@ -66,13 +58,11 @@ async function triggerTabSelection(tab) {
     tab.url.startsWith('view-source:') ||
     tab.url.startsWith('about:')
   ) {
-    try {
-      await chrome.tabs.create({
-        url: chrome.runtime.getURL('demo.html')
-      });
-    } catch (e) {
-      console.warn('[Region Share] Could not open demo tab:', e);
-    }
+    handleOpenViewer({
+      rect: { x: 100, y: 100, width: 960, height: 540 },
+      viewport: { width: 1920, height: 1080 },
+      elementTag: 'Screen / Window Cropper'
+    }, tab);
     return;
   }
 
