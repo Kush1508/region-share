@@ -298,57 +298,73 @@
   /**
    * High-DPI real-time cropping render loop
    */
+  /**
+   * High-DPI real-time cropping render loop
+   */
+  let isLoopRunning = false;
+  let rafId = null;
+
   function startCropperLoop() {
+    if (isLoopRunning) return;
+    isLoopRunning = true;
+
     function renderFrame() {
-      if (!isStreaming || !sourceVideo || sourceVideo.paused || sourceVideo.ended) {
+      if (!isStreaming) {
+        isLoopRunning = false;
+        return;
+      }
+
+      // Always request the next frame immediately so the loop NEVER dies
+      rafId = requestAnimationFrame(renderFrame);
+
+      if (!sourceVideo || sourceVideo.ended) {
+        return;
+      }
+
+      // Auto-wake if the video element paused momentarily
+      if (sourceVideo.paused) {
+        sourceVideo.play().catch(() => {});
         return;
       }
 
       const videoW = sourceVideo.videoWidth;
       const videoH = sourceVideo.videoHeight;
 
-      if (videoW > 0 && videoH > 0) {
+      // Only draw when Chrome has supplied active video frames
+      if (videoW > 0 && videoH > 0 && sourceVideo.readyState >= 2) {
         const crop = calculateVideoCropCoords(videoW, videoH);
 
         const targetBufferW = Math.round(crop.sw);
         const targetBufferH = Math.round(crop.sh);
 
-        if (cropCanvas.width !== targetBufferW || cropCanvas.height !== targetBufferH) {
-          cropCanvas.width = targetBufferW;
-          cropCanvas.height = targetBufferH;
-          ctx.imageSmoothingEnabled = true;
-          ctx.imageSmoothingQuality = 'high';
+        if (targetBufferW > 0 && targetBufferH > 0) {
+          if (cropCanvas.width !== targetBufferW || cropCanvas.height !== targetBufferH) {
+            cropCanvas.width = targetBufferW;
+            cropCanvas.height = targetBufferH;
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+          }
+
+          ctx.drawImage(
+            sourceVideo,
+            crop.sx, crop.sy, crop.sw, crop.sh,
+            0, 0, targetBufferW, targetBufferH
+          );
+
+          // FPS calculation
+          frameCount++;
+          const now = performance.now();
+          if (now - lastFpsTime >= 1000) {
+            const fps = Math.round((frameCount * 1000) / (now - lastFpsTime));
+            hudFps.textContent = `${fps} fps`;
+            frameCount = 0;
+            lastFpsTime = now;
+          }
         }
-
-        ctx.drawImage(
-          sourceVideo,
-          crop.sx, crop.sy, crop.sw, crop.sh,
-          0, 0, targetBufferW, targetBufferH
-        );
-
-        // FPS calculation
-        frameCount++;
-        const now = performance.now();
-        if (now - lastFpsTime >= 1000) {
-          const fps = Math.round((frameCount * 1000) / (now - lastFpsTime));
-          hudFps.textContent = `${fps} fps`;
-          frameCount = 0;
-          lastFpsTime = now;
-        }
-      }
-
-      if ('requestVideoFrameCallback' in sourceVideo) {
-        sourceVideo.requestVideoFrameCallback(renderFrame);
-      } else {
-        requestAnimationFrame(renderFrame);
       }
     }
 
-    if ('requestVideoFrameCallback' in sourceVideo) {
-      sourceVideo.requestVideoFrameCallback(renderFrame);
-    } else {
-      requestAnimationFrame(renderFrame);
-    }
+    rafId = requestAnimationFrame(renderFrame);
   }
 
   /**
@@ -356,6 +372,12 @@
    */
   function stopCapture(notice) {
     isStreaming = false;
+    isLoopRunning = false;
+
+    if (rafId) {
+      cancelAnimationFrame(rafId);
+      rafId = null;
+    }
 
     if (cropAdjuster && !cropAdjuster.classList.contains('hidden')) {
       closeAdjuster();
@@ -605,6 +627,18 @@
       } else if (isStreaming) {
         stopCapture('Stream stopped via Escape key.');
       }
+    }
+  });
+
+  sourceVideo.addEventListener('playing', () => {
+    if (isStreaming) {
+      startCropperLoop();
+    }
+  });
+
+  sourceVideo.addEventListener('loadeddata', () => {
+    if (isStreaming) {
+      startCropperLoop();
     }
   });
 

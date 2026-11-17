@@ -17,15 +17,17 @@ html, body {
   user-select: none;
 }
 
-/* Hidden video capture element */
+/* Background video capture element (rendered behind canvas so compositor decodes at full 60fps) */
 #source-video {
-  position: absolute;
-  top: -9999px;
-  left: -9999px;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  object-fit: contain;
+  opacity: 0.001;
   pointer-events: none;
+  z-index: 0;
 }
 
 /* Fullscreen High-DPI Canvas */
