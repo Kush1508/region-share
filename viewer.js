@@ -47,7 +47,15 @@
     sessionId = params.get('session');
 
     if (!sessionId) {
-      statusMsg.textContent = 'Session identifier missing. Please launch from a webpage.';
+      // Allow standalone usage without prior element selection
+      applySessionData({
+        sourceTabTitle: 'Screen / Tab / Window',
+        selection: {
+          elementTag: 'Custom Crop',
+          rect: { x: 100, y: 100, width: 960, height: 540 },
+          viewport: { width: window.screen.width || 1920, height: window.screen.height || 1080 }
+        }
+      });
       return;
     }
 
