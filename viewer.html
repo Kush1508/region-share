@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Region Share - Cropped Stream</title>
+  <link rel="stylesheet" href="viewer.css">
+</head>
+<body>
+  <!-- Hidden video capture element -->
+  <video id="source-video" autoplay playsinline muted></video>
+
+  <!-- High-DPI Live Cropped Stream Canvas -->
+  <canvas id="crop-canvas" class="hidden"></canvas>
+
+  <!-- Initial Setup & Ready State Card -->
+  <main id="setup-card" class="setup-card">
+    <div class="brand-badge">
+      <div class="brand-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M4 8V4h4M20 8V4h-4M4 16v4h4M20 16v4h-4"/>
+          <rect x="8" y="8" width="8" height="8" rx="1" fill="currentColor" fill-opacity="0.2"/>
+        </svg>
+      </div>
+      <span>Region Share • Stream Ready</span>
+    </div>
+
+    <h1 class="title">Stream Cropped Region</h1>
+    <p class="subtitle">Only the selected element will be rendered into this window. Share this window in Google Meet to hide your browser tabs, URL bar, and taskbar.</p>
+
+    <!-- Selection details preview card -->
+    <div class="info-card">
+      <div class="info-row">
+        <span class="info-label">Source Tab:</span>
+        <span id="tab-title" class="info-value tab-name">Loading source...</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Target Area:</span>
+        <span id="target-tag" class="info-value highlight-tag">Element</span>
+        <span id="target-dims" class="dims-badge">0 × 0 px</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Dynamic Tracking:</span>
+        <span class="status-active">
+          <span class="status-dot"></span> Active (Follows resize &amp; scroll)
+        </span>
+      </div>
+    </div>
+
+    <!-- Instructions callout -->
+    <div class="instructions-box">
+      <div class="step-item">
+        <div class="step-num">1</div>
+        <div class="step-text">Click <strong>Start Cropped Share</strong> below.</div>
+      </div>
+      <div class="step-item">
+        <div class="step-num">2</div>
+        <div class="step-text">In Chrome's prompt, select the tab: <span id="prompt-tab-hint" class="prompt-hint">source tab</span>.</div>
+      </div>
+      <div class="step-item">
+        <div class="step-num">3</div>
+        <div class="step-text">In Google Meet, click <strong>Present now &rarr; Window</strong> &rarr; pick this <strong>Region Share</strong> window.</div>
+      </div>
+    </div>
+
+    <!-- Primary Action Button -->
+    <div class="action-zone">
+      <button id="start-btn" class="primary-btn">
+        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polygon points="5 3 19 12 5 21 5 3" fill="currentColor"/>
+        </svg>
+        <span>Start Cropped Share</span>
+      </button>
+      <div id="status-msg" class="status-msg"></div>
+    </div>
+  </main>
+
+  <!-- Minimal Floating HUD Overlay during active stream -->
+  <header id="stream-hud" class="stream-hud hidden">
+    <div class="hud-left">
+      <div class="live-indicator">
+        <span class="live-dot"></span>
+        <span class="live-text">LIVE</span>
+      </div>
+      <span id="hud-dims" class="hud-stat">1280 × 720</span>
+      <span id="hud-fps" class="hud-stat">60 fps</span>
+    </div>
+    <div class="hud-right">
+      <button id="fit-toggle-btn" class="hud-btn" title="Toggle Aspect Fit / Fill">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+          <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>
+        </svg>
+        <span>Fit</span>
+      </button>
+      <button id="stop-btn" class="hud-btn hud-btn-danger" title="Stop Stream">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+          <rect x="6" y="6" width="12" height="12" fill="currentColor"/>
+        </svg>
+        <span>Stop</span>
+      </button>
+    </div>
+  </header>
+
+  <script src="viewer.js"></script>
+</body>
+</html>
