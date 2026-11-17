@@ -57,7 +57,7 @@ chrome.action.onClicked.addListener(async (tab) => {
       // Now start selection
       await chrome.tabs.sendMessage(tab.id, { action: 'START_SELECTION' });
     } catch (injectErr) {
-      console.error('[Region Share] Injection failed:', injectErr);
+      console.warn('[Region Share] Injection info:', injectErr);
     }
   }
 });
@@ -140,7 +140,7 @@ async function handleOpenViewer(selection, sourceTab) {
     sessionData.windowId = win.id;
     return { success: true, sessionId, windowId: win.id };
   } catch (err) {
-    console.error('[Region Share] Error opening popup window:', err);
+    console.warn('[Region Share] Popup info:', err);
     return { success: false, error: err.message };
   }
 }
