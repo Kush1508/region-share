@@ -481,108 +481,57 @@
   }
 
   /**
-   * Starts real-time tracking of an element's bounding rect
+   * Tracks viewport resize changes so crop stays proportional
    */
   function startDynamicTracking(element) {
     cleanupTracking();
     trackedElement = element;
 
     const notifyUpdate = () => {
-      if (!trackedElement || !document.contains(trackedElement)) return;
       if (rafPending) return;
-
       rafPending = true;
+
       requestAnimationFrame(() => {
         rafPending = false;
-        if (!trackedElement) return;
-
-        const r = trackedElement.getBoundingClientRect();
-        const update = {
-          x: Math.round(r.left),
-          y: Math.round(r.top),
-          width: Math.round(r.width),
-          height: Math.round(r.height)
-        };
-
-        if (
-          !lastSentRect ||
-          lastSentRect.x !== update.x ||
-          lastSentRect.y !== update.y ||
-          lastSentRect.width !== update.width ||
-          lastSentRect.height !== update.height
-        ) {
-          lastSentRect = update;
-          chrome.runtime.sendMessage({
-            action: 'RECT_UPDATE',
-            rect: update,
-            viewport: {
-              width: window.innerWidth,
-              height: window.innerHeight,
-              devicePixelRatio: window.devicePixelRatio || 1
-            }
-          }).catch(() => {});
-        }
+        chrome.runtime.sendMessage({
+          action: 'RECT_UPDATE',
+          viewport: {
+            width: window.innerWidth,
+            height: window.innerHeight,
+            devicePixelRatio: window.devicePixelRatio || 1
+          }
+        }).catch(() => {});
       });
     };
 
-    try {
-      trackedResizeObserver = new ResizeObserver(() => notifyUpdate());
-      trackedResizeObserver.observe(trackedElement);
-    } catch (e) {}
-
     trackedScrollHandler = () => notifyUpdate();
-    window.addEventListener('scroll', trackedScrollHandler, { passive: true });
     window.addEventListener('resize', trackedScrollHandler, { passive: true });
   }
 
   /**
-   * Tracks a custom region relative to page scroll
+   * Keeps viewport synchronized on window resize
    */
   function startCustomRegionTracking(initialRect) {
     cleanupTracking();
-    const docX = initialRect.x + window.scrollX;
-    const docY = initialRect.y + window.scrollY;
-    trackedCustomRegion = { docX, docY, width: initialRect.width, height: initialRect.height };
 
     const notifyUpdate = () => {
-      if (!trackedCustomRegion || rafPending) return;
+      if (rafPending) return;
       rafPending = true;
 
       requestAnimationFrame(() => {
         rafPending = false;
-        if (!trackedCustomRegion) return;
-
-        const currentViewX = Math.round(trackedCustomRegion.docX - window.scrollX);
-        const currentViewY = Math.round(trackedCustomRegion.docY - window.scrollY);
-
-        const update = {
-          x: currentViewX,
-          y: currentViewY,
-          width: Math.round(trackedCustomRegion.width),
-          height: Math.round(trackedCustomRegion.height)
-        };
-
-        if (
-          !lastSentRect ||
-          lastSentRect.x !== update.x ||
-          lastSentRect.y !== update.y
-        ) {
-          lastSentRect = update;
-          chrome.runtime.sendMessage({
-            action: 'RECT_UPDATE',
-            rect: update,
-            viewport: {
-              width: window.innerWidth,
-              height: window.innerHeight,
-              devicePixelRatio: window.devicePixelRatio || 1
-            }
-          }).catch(() => {});
-        }
+        chrome.runtime.sendMessage({
+          action: 'RECT_UPDATE',
+          viewport: {
+            width: window.innerWidth,
+            height: window.innerHeight,
+            devicePixelRatio: window.devicePixelRatio || 1
+          }
+        }).catch(() => {});
       });
     };
 
     trackedScrollHandler = () => notifyUpdate();
-    window.addEventListener('scroll', trackedScrollHandler, { passive: true });
     window.addEventListener('resize', trackedScrollHandler, { passive: true });
   }
 
@@ -595,8 +544,8 @@
       trackedResizeObserver = null;
     }
     if (trackedScrollHandler) {
-      window.removeEventListener('scroll', trackedScrollHandler);
       window.removeEventListener('resize', trackedScrollHandler);
+      window.removeEventListener('scroll', trackedScrollHandler);
       trackedScrollHandler = null;
     }
     trackedElement = null;

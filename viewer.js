@@ -175,14 +175,16 @@
         return;
       }
 
-      if (msg.rect) {
-        currentRect = msg.rect;
-        if (!manualVideoCrop) {
-          hudDims.textContent = `${Math.round(currentRect.width)} × ${Math.round(currentRect.height)}`;
+      if (msg.rect && msg.rect.width > 10 && msg.rect.height > 10) {
+        if (msg.rect.x >= 0 && msg.rect.y >= 0) {
+          currentRect = { ...msg.rect };
+          if (!manualVideoCrop) {
+            hudDims.textContent = `${Math.round(currentRect.width)} × ${Math.round(currentRect.height)}`;
+          }
         }
       }
-      if (msg.viewport) {
-        currentViewport = msg.viewport;
+      if (msg.viewport && msg.viewport.width > 0 && msg.viewport.height > 0) {
+        currentViewport = { ...msg.viewport };
       }
     }
   });
@@ -251,10 +253,10 @@
   function calculateVideoCropCoords(videoW, videoH) {
     if (manualVideoCrop) {
       return {
-        sx: Math.max(0, Math.min(videoW - 1, manualVideoCrop.sx)),
-        sy: Math.max(0, Math.min(videoH - 1, manualVideoCrop.sy)),
-        sw: Math.max(1, Math.min(videoW - manualVideoCrop.sx, manualVideoCrop.sw)),
-        sh: Math.max(1, Math.min(videoH - manualVideoCrop.sy, manualVideoCrop.sh)),
+        sx: Math.max(0, Math.min(videoW - 1, Math.round(manualVideoCrop.sx))),
+        sy: Math.max(0, Math.min(videoH - 1, Math.round(manualVideoCrop.sy))),
+        sw: Math.max(1, Math.min(videoW - manualVideoCrop.sx, Math.round(manualVideoCrop.sw))),
+        sh: Math.max(1, Math.min(videoH - manualVideoCrop.sy, Math.round(manualVideoCrop.sh))),
         contentW: videoW,
         contentH: videoH,
         offsetX: 0,
@@ -262,8 +264,8 @@
       };
     }
 
-    const vpW = currentViewport.width || 1920;
-    const vpH = currentViewport.height || 1080;
+    const vpW = Math.max(1, currentViewport.width || 1920);
+    const vpH = Math.max(1, currentViewport.height || 1080);
 
     const videoAspect = videoW / videoH;
     const viewportAspect = vpW / vpH;
@@ -287,17 +289,20 @@
     const scaleX = contentW / vpW;
     const scaleY = contentH / vpH;
 
-    const sx = Math.max(0, Math.min(videoW - 1, offsetX + (currentRect.x * scaleX)));
-    const sy = Math.max(0, Math.min(videoH - 1, offsetY + (currentRect.y * scaleY)));
-    const sw = Math.max(1, Math.min(videoW - sx, currentRect.width * scaleX));
-    const sh = Math.max(1, Math.min(videoH - sy, currentRect.height * scaleY));
+    // Strictly clamp currentRect within viewport bounds so coordinates are always valid
+    const clampedX = Math.max(0, Math.min(vpW, currentRect.x || 0));
+    const clampedY = Math.max(0, Math.min(vpH, currentRect.y || 0));
+    const clampedW = Math.max(10, Math.min(vpW - clampedX, currentRect.width || 800));
+    const clampedH = Math.max(10, Math.min(vpH - clampedY, currentRect.height || 600));
+
+    const sx = Math.max(0, Math.min(videoW - 1, Math.round(offsetX + (clampedX * scaleX))));
+    const sy = Math.max(0, Math.min(videoH - 1, Math.round(offsetY + (clampedY * scaleY))));
+    const sw = Math.max(1, Math.min(videoW - sx, Math.round(clampedW * scaleX)));
+    const sh = Math.max(1, Math.min(videoH - sy, Math.round(clampedH * scaleY)));
 
     return { sx, sy, sw, sh, contentW, contentH, offsetX, offsetY };
   }
 
-  /**
-   * High-DPI real-time cropping render loop
-   */
   /**
    * High-DPI real-time cropping render loop
    */
@@ -332,34 +337,41 @@
 
       // Only draw when Chrome has supplied active video frames
       if (videoW > 0 && videoH > 0 && sourceVideo.readyState >= 2) {
-        const crop = calculateVideoCropCoords(videoW, videoH);
+        try {
+          const crop = calculateVideoCropCoords(videoW, videoH);
 
-        const targetBufferW = Math.round(crop.sw);
-        const targetBufferH = Math.round(crop.sh);
+          const targetBufferW = Math.round(crop.sw);
+          const targetBufferH = Math.round(crop.sh);
 
-        if (targetBufferW > 0 && targetBufferH > 0) {
-          if (cropCanvas.width !== targetBufferW || cropCanvas.height !== targetBufferH) {
-            cropCanvas.width = targetBufferW;
-            cropCanvas.height = targetBufferH;
-            ctx.imageSmoothingEnabled = true;
-            ctx.imageSmoothingQuality = 'high';
+          if (targetBufferW > 0 && targetBufferH > 0) {
+            if (
+              Math.abs(cropCanvas.width - targetBufferW) > 1 ||
+              Math.abs(cropCanvas.height - targetBufferH) > 1
+            ) {
+              cropCanvas.width = targetBufferW;
+              cropCanvas.height = targetBufferH;
+              ctx.imageSmoothingEnabled = true;
+              ctx.imageSmoothingQuality = 'high';
+            }
+
+            ctx.drawImage(
+              sourceVideo,
+              crop.sx, crop.sy, crop.sw, crop.sh,
+              0, 0, targetBufferW, targetBufferH
+            );
+
+            // FPS calculation
+            frameCount++;
+            const now = performance.now();
+            if (now - lastFpsTime >= 1000) {
+              const fps = Math.round((frameCount * 1000) / (now - lastFpsTime));
+              hudFps.textContent = `${fps} fps`;
+              frameCount = 0;
+              lastFpsTime = now;
+            }
           }
-
-          ctx.drawImage(
-            sourceVideo,
-            crop.sx, crop.sy, crop.sw, crop.sh,
-            0, 0, targetBufferW, targetBufferH
-          );
-
-          // FPS calculation
-          frameCount++;
-          const now = performance.now();
-          if (now - lastFpsTime >= 1000) {
-            const fps = Math.round((frameCount * 1000) / (now - lastFpsTime));
-            hudFps.textContent = `${fps} fps`;
-            frameCount = 0;
-            lastFpsTime = now;
-          }
+        } catch (renderErr) {
+          // Ignore transient frame draw error to prevent loop abortion
         }
       }
     }
