@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Region Share - Interactive Test & Demo Page</title>
+  <link rel="stylesheet" href="content.css">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0f172a;
+      color: #f8fafc;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      padding: 30px;
+      line-height: 1.5;
+    }
+    .header-banner {
+      background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+      border: 1px solid #38bdf8;
+      border-radius: 14px;
+      padding: 24px;
+      margin-bottom: 28px;
+      box-shadow: 0 10px 30px -10px rgba(56, 189, 248, 0.25);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+    }
+    .header-info h1 {
+      font-size: 24px;
+      color: #38bdf8;
+      margin-bottom: 6px;
+    }
+    .header-info p {
+      color: #94a3b8;
+      font-size: 14px;
+      max-width: 650px;
+    }
+    .cta-btn {
+      background: linear-gradient(135deg, #0284c7 0%, #2563eb 100%);
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 10px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 4px 15px rgba(37, 99, 235, 0.4);
+      transition: all 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .cta-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(37, 99, 235, 0.6);
+    }
+    .steps-bar {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+    .step-card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      padding: 16px;
+    }
+    .step-tag {
+      color: #38bdf8;
+      font-weight: 700;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 6px;
+    }
+    .step-card h3 {
+      font-size: 16px;
+      color: #f1f5f9;
+      margin-bottom: 6px;
+    }
+    .step-card p {
+      color: #94a3b8;
+      font-size: 13px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 20px;
+    }
+    .demo-card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 20px;
+      transition: border-color 0.2s;
+    }
+    .demo-card:hover {
+      border-color: #64748b;
+    }
+    .demo-card h2 {
+      font-size: 18px;
+      margin-bottom: 12px;
+      color: #e2e8f0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .badge {
+      font-size: 11px;
+      background: rgba(56, 189, 248, 0.15);
+      color: #38bdf8;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-weight: 600;
+    }
+    .stat-number {
+      font-size: 32px;
+      font-weight: 700;
+      color: #f8fafc;
+      margin-bottom: 6px;
+    }
+    .stat-change {
+      color: #34d399;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .chart-box {
+      height: 120px;
+      background: #0f172a;
+      border-radius: 8px;
+      margin-top: 14px;
+      display: flex;
+      align-items: flex-end;
+      gap: 8px;
+      padding: 12px;
+    }
+    .bar {
+      flex: 1;
+      background: linear-gradient(to top, #0284c7, #38bdf8);
+      border-radius: 4px;
+      transition: height 0.5s ease;
+    }
+    pre {
+      background: #0b0f19;
+      border-radius: 8px;
+      padding: 14px;
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-size: 12px;
+      color: #a5f3fc;
+      overflow-x: auto;
+    }
+    .slide-box {
+      background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%);
+      border: 1px solid #4338ca;
+      border-radius: 10px;
+      padding: 24px;
+      color: white;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header-banner">
+    <div class="header-info">
+      <h1>🚀 Region Share — Interactive Test Page</h1>
+      <p>Use this page to test element hover cropping or Shift+drag rectangular selections. Click the button on the right, or click the <strong>Region Share icon</strong> in your browser toolbar.</p>
+    </div>
+    <button id="trigger-crop-btn" class="cta-btn">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M4 8V4h4M20 8V4h-4M4 16v4h4M20 16v4h-4"/>
+        <rect x="8" y="8" width="8" height="8" rx="1" fill="currentColor" fill-opacity="0.2"/>
+      </svg>
+      <span>Start Crop Selection</span>
+    </button>
+  </div>
+
+  <div class="steps-bar">
+    <div class="step-card">
+      <div class="step-tag">Step 1</div>
+      <h3>Hover &amp; Select Element</h3>
+      <p>Hover over any dashboard card below. A cyan highlight box with dimension badge appears. Click to select.</p>
+    </div>
+    <div class="step-card">
+      <div class="step-tag">Step 2</div>
+      <h3>Or Hold Shift &amp; Drag</h3>
+      <p>Hold the <kbd>Shift</kbd> key and drag across any area to crop a custom rectangular box of any size.</p>
+    </div>
+    <div class="step-card">
+      <div class="step-tag">Step 3</div>
+      <h3>Stream into Google Meet</h3>
+      <p>A borderless popup opens. Click "Start Cropped Share" and share that window in your meeting.</p>
+    </div>
+  </div>
+
+  <div class="grid">
+    <!-- Test Card 1: Metric -->
+    <div id="card-metrics" class="demo-card">
+      <h2>Live Revenue <span class="badge">Crop Target A</span></h2>
+      <div class="stat-number">$148,290.00</div>
+      <div class="stat-change">+24.8% vs last month</div>
+      <div class="chart-box">
+        <div class="bar" style="height: 30%;"></div>
+        <div class="bar" style="height: 45%;"></div>
+        <div class="bar" style="height: 60%;"></div>
+        <div class="bar" style="height: 80%;"></div>
+        <div class="bar" style="height: 65%;"></div>
+        <div class="bar" style="height: 95%;"></div>
+        <div class="bar" style="height: 85%;"></div>
+      </div>
+    </div>
+
+    <!-- Test Card 2: Code Snippet -->
+    <div id="card-code" class="demo-card">
+      <h2>API Code Snippet <span class="badge">Crop Target B</span></h2>
+      <pre><code>// Dynamic Cropper Configuration
+const cropper = new RegionShare({
+  highDPI: true,
+  frameRate: 60,
+  tracking: "dynamic"
+});
+
+await cropper.attachToElement("#card-metrics");</code></pre>
+    </div>
+
+    <!-- Test Card 3: Slide Presentation Box -->
+    <div id="card-slide" class="demo-card">
+      <h2>Confidential Slide Box <span class="badge">Crop Target C</span></h2>
+      <div class="slide-box">
+        <h3 style="font-size: 20px; margin-bottom: 8px;">Q4 Strategy Highlights</h3>
+        <p style="font-size: 13px; color: #c7d2fe;">Share only this presentation slide with your team in Google Meet without displaying your open browser tabs or private bookmarks.</p>
+      </div>
+    </div>
+  </div>
+
+  <script src="content.js"></script>
+  <script>
+    document.getElementById('trigger-crop-btn').addEventListener('click', () => {
+      window.dispatchEvent(new CustomEvent('region-share-start'));
+      // Send message to content script listener
+      window.postMessage({ type: 'REGION_SHARE_START' }, '*');
+      if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id) {
+        chrome.tabs?.getCurrent((tab) => {
+          // Trigger selection
+        });
+      }
+    });
+
+    window.addEventListener('message', (e) => {
+      if (e.data && e.data.type === 'REGION_SHARE_START') {
+        // Direct trigger
+        const event = new KeyboardEvent('keydown', { key: 'Shift' });
+      }
+    });
+  </script>
+</body>
+</html>

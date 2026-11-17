@@ -10,7 +10,8 @@ const activeSessions = new Map();
 chrome.action.onClicked.addListener(async (tab) => {
   if (!tab || !tab.id) return;
 
-  // Cannot inject into restricted Chrome system URLs
+  // If the user clicks on an internal browser page (e.g. chrome://extensions or new tab),
+  // open the interactive Demo/Test page so they immediately have a real webpage to crop!
   if (
     !tab.url ||
     tab.url.startsWith('chrome://') ||
@@ -19,7 +20,13 @@ chrome.action.onClicked.addListener(async (tab) => {
     tab.url.startsWith('view-source:') ||
     tab.url.startsWith('about:')
   ) {
-    console.warn('[Region Share] Cannot operate on internal browser pages:', tab.url);
+    try {
+      await chrome.tabs.create({
+        url: chrome.runtime.getURL('demo.html')
+      });
+    } catch (e) {
+      console.warn('[Region Share] Could not open demo tab:', e);
+    }
     return;
   }
 
@@ -27,7 +34,7 @@ chrome.action.onClicked.addListener(async (tab) => {
     // Attempt to toggle selection if already injected
     await chrome.tabs.sendMessage(tab.id, { action: 'TOGGLE_SELECTION' });
   } catch (err) {
-    // Content script not yet active in this tab, inject CSS and JS
+    // Content script not yet active in this tab (e.g. tab opened before extension loaded), inject CSS and JS
     try {
       await chrome.scripting.insertCSS({
         target: { tabId: tab.id },
