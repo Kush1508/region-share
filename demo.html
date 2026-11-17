@@ -238,20 +238,10 @@ await cropper.attachToElement("#card-metrics");</code></pre>
   <script src="content.js"></script>
   <script>
     document.getElementById('trigger-crop-btn').addEventListener('click', () => {
-      window.dispatchEvent(new CustomEvent('region-share-start'));
-      // Send message to content script listener
-      window.postMessage({ type: 'REGION_SHARE_START' }, '*');
-      if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id) {
-        chrome.tabs?.getCurrent((tab) => {
-          // Trigger selection
-        });
-      }
-    });
-
-    window.addEventListener('message', (e) => {
-      if (e.data && e.data.type === 'REGION_SHARE_START') {
-        // Direct trigger
-        const event = new KeyboardEvent('keydown', { key: 'Shift' });
+      if (typeof window.__regionShareStart === 'function') {
+        window.__regionShareStart();
+      } else {
+        window.dispatchEvent(new CustomEvent('region-share-start'));
       }
     });
   </script>

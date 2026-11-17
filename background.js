@@ -10,6 +10,14 @@ const activeSessions = new Map();
 chrome.action.onClicked.addListener(async (tab) => {
   if (!tab || !tab.id) return;
 
+  // If the user is on the demo.html page, toggle selection directly on it
+  if (tab.url && tab.url.includes('demo.html')) {
+    try {
+      await chrome.tabs.sendMessage(tab.id, { action: 'TOGGLE_SELECTION' });
+    } catch (e) {}
+    return;
+  }
+
   // If the user clicks on an internal browser page (e.g. chrome://extensions or new tab),
   // open the interactive Demo/Test page so they immediately have a real webpage to crop!
   if (

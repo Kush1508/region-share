@@ -5,11 +5,12 @@
  */
 
 (() => {
-  // Prevent duplicate execution of top-level code
-  if (window.__regionShareInitialized) {
-    return;
+  // If already loaded in this tab, clean up previous overlay and re-register
+  if (typeof window.__regionShareCleanup === 'function') {
+    try {
+      window.__regionShareCleanup();
+    } catch (e) {}
   }
-  window.__regionShareInitialized = true;
 
   let isSelectionActive = false;
   let overlayHost = null;
@@ -590,6 +591,19 @@
       startSelection();
     }
   }
+
+  // Expose global methods for direct programmatic or event-driven invocation
+  window.__regionShareStart = startSelection;
+  window.__regionShareStop = stopSelection;
+  window.__regionShareToggle = toggleSelection;
+  window.__regionShareCleanup = () => {
+    stopSelection();
+    cleanupTracking();
+  };
+
+  window.addEventListener('region-share-start', startSelection);
+  window.addEventListener('region-share-toggle', toggleSelection);
+  window.addEventListener('region-share-stop', stopSelection);
 
   // Listen for control commands from background service worker
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
