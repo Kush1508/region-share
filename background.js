@@ -1,13 +1,51 @@
 /**
  * Region Share - Background Service Worker (Manifest V3)
  * Orchestrates content script injection, popup window creation,
- * and state synchronization between the source tab and cropped viewer.
+ * context menus, and state synchronization between source tabs and cropped viewer.
  */
 
 const activeSessions = new Map();
 
+// Register context menus on install
+chrome.runtime.onInstalled.addListener(() => {
+  if (chrome.contextMenus) {
+    chrome.contextMenus.removeAll(() => {
+      chrome.contextMenus.create({
+        id: 'crop-element',
+        title: '🎯 Region Share: Crop Element or Area',
+        contexts: ['page', 'selection', 'link', 'editable', 'image', 'video']
+      });
+      chrome.contextMenus.create({
+        id: 'open-viewer',
+        title: '📺 Region Share: Open Cropped Screen Studio',
+        contexts: ['all']
+      });
+    });
+  }
+});
+
+// Context menu click listener
+if (chrome.contextMenus && chrome.contextMenus.onClicked) {
+  chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+    if (info.menuItemId === 'crop-element' && tab && tab.id) {
+      triggerTabSelection(tab);
+    } else if (info.menuItemId === 'open-viewer') {
+      handleOpenViewer({
+        rect: { x: 100, y: 100, width: 960, height: 540 },
+        viewport: { width: 1920, height: 1080 },
+        elementTag: 'Screen / Window Cropper'
+      }, tab);
+    }
+  });
+}
+
 // Listen for clicks on the extension action icon
-chrome.action.onClicked.addListener(async (tab) => {
+chrome.action.onClicked.addListener(triggerTabSelection);
+
+/**
+ * Triggers the crop overlay on the active tab
+ */
+async function triggerTabSelection(tab) {
   if (!tab || !tab.id) return;
 
   // If the user is on the demo.html page, toggle selection directly on it
@@ -60,7 +98,7 @@ chrome.action.onClicked.addListener(async (tab) => {
       console.warn('[Region Share] Injection info:', injectErr);
     }
   }
-});
+}
 
 // Handle incoming messages from content scripts and viewer popups
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
@@ -98,7 +136,7 @@ async function handleOpenViewer(selection, sourceTab) {
   const sessionData = {
     sessionId,
     sourceTabId: sourceTab ? sourceTab.id : null,
-    sourceTabTitle: sourceTab ? sourceTab.title : 'Selected Tab',
+    sourceTabTitle: sourceTab ? (sourceTab.title || 'Selected Tab') : 'Screen / Window Cropper',
     sourceTabUrl: sourceTab ? sourceTab.url : '',
     selection,
     createdAt: Date.now()
@@ -146,11 +184,13 @@ async function handleOpenViewer(selection, sourceTab) {
 }
 
 // Clean up cached sessions when popup windows are closed
-chrome.windows.onRemoved.addListener((windowId) => {
-  for (const [sessionId, data] of activeSessions.entries()) {
-    if (data.windowId === windowId) {
-      activeSessions.delete(sessionId);
-      break;
+if (chrome.windows && chrome.windows.onRemoved) {
+  chrome.windows.onRemoved.addListener((windowId) => {
+    for (const [sessionId, data] of activeSessions.entries()) {
+      if (data.windowId === windowId) {
+        activeSessions.delete(sessionId);
+        break;
+      }
     }
-  }
-});
+  });
+}

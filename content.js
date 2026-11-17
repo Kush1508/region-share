@@ -15,6 +15,7 @@
   let isSelectionActive = false;
   let overlayHost = null;
   let shadowRoot = null;
+  let backdrop = null;
   let highlightBox = null;
   let dragBox = null;
   let tooltip = null;
@@ -174,7 +175,7 @@
       }
     `;
 
-    const backdrop = document.createElement('div');
+    backdrop = document.createElement('div');
     backdrop.className = 'backdrop';
 
     highlightBox = document.createElement('div');
@@ -280,10 +281,9 @@
     }
 
     // Hover mode: identify element under cursor
-    // Temporarily hide overlay host from hit-testing
-    overlayHost.style.pointerEvents = 'none';
+    if (backdrop) backdrop.style.display = 'none';
     const target = document.elementFromPoint(e.clientX, e.clientY);
-    overlayHost.style.pointerEvents = 'auto';
+    if (backdrop) backdrop.style.display = 'block';
 
     if (!target || target === document.documentElement || target === document.body || target === overlayHost) {
       return;
@@ -320,7 +320,7 @@
   function onPointerDown(e) {
     if (!isSelectionActive) return;
 
-    // Start custom box selection if Shift is held or primary click on backdrop
+    // Start custom box selection if Shift is held
     if (e.shiftKey) {
       isDragging = true;
       startX = e.clientX;
@@ -330,14 +330,23 @@
       return;
     }
 
-    // Normal click selection on hovered element
-    if (currentHoveredElement && currentRect) {
+    // Direct hit test on click
+    if (backdrop) backdrop.style.display = 'none';
+    const target = document.elementFromPoint(e.clientX, e.clientY);
+    if (backdrop) backdrop.style.display = 'block';
+
+    const selectedTarget = (target && target !== document.documentElement && target !== document.body && target !== overlayHost)
+      ? target
+      : currentHoveredElement;
+
+    if (selectedTarget) {
       e.preventDefault();
       e.stopPropagation();
+      const r = selectedTarget.getBoundingClientRect();
       finalizeSelection({
         isCustomRegion: false,
-        element: currentHoveredElement,
-        rect: currentRect
+        element: selectedTarget,
+        rect: { x: r.left, y: r.top, width: r.width, height: r.height }
       });
     }
   }
@@ -559,6 +568,7 @@
       highlightBox = null;
       dragBox = null;
       tooltip = null;
+      backdrop = null;
     }
     currentHoveredElement = null;
     currentRect = null;
