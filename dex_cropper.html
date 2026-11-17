@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Region Share - Web Cropper Studio for Samsung DeX & Chrome</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: #08090d;
+      color: #f1f5f9;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      background: rgba(15, 23, 42, 0.9);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 16px;
+      color: #38bdf8;
+    }
+    .badge {
+      font-size: 11px;
+      background: rgba(56, 189, 248, 0.15);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      padding: 2px 8px;
+      border-radius: 9999px;
+      color: #38bdf8;
+    }
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    button {
+      padding: 8px 16px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      background: rgba(255, 255, 255, 0.08);
+      color: #e2e8f0;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+    }
+    button:hover { background: rgba(255, 255, 255, 0.16); color: #fff; }
+    .btn-primary {
+      background: linear-gradient(135deg, #0284c7 0%, #2563eb 100%);
+      border-color: rgba(56, 189, 248, 0.4);
+      color: #fff;
+    }
+    .btn-primary:hover {
+      background: linear-gradient(135deg, #0369a1 0%, #1d4ed8 100%);
+    }
+    main {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      position: relative;
+      overflow: hidden;
+    }
+    #stage-container {
+      position: relative;
+      max-width: 100%;
+      max-height: calc(100vh - 100px);
+      display: inline-block;
+      box-shadow: 0 12px 36px rgba(0,0,0,0.8);
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.12);
+    }
+    #source-video {
+      display: block;
+      max-width: 100%;
+      max-height: calc(100vh - 100px);
+      object-fit: contain;
+      pointer-events: none;
+    }
+    #crop-box {
+      position: absolute;
+      border: 2px solid #38bdf8;
+      background: rgba(56, 189, 248, 0.15);
+      box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.65);
+      cursor: move;
+      touch-action: none;
+      box-sizing: border-box;
+      display: none;
+    }
+    .handle {
+      position: absolute;
+      width: 12px;
+      height: 12px;
+      background: #ffffff;
+      border: 2px solid #0284c7;
+      border-radius: 2px;
+    }
+    .h-nw { top: -6px; left: -6px; cursor: nwse-resize; }
+    .h-ne { top: -6px; right: -6px; cursor: nesw-resize; }
+    .h-sw { bottom: -6px; left: -6px; cursor: nesw-resize; }
+    .h-se { bottom: -6px; right: -6px; cursor: nwse-resize; }
+    .h-n  { top: -6px; left: calc(50% - 6px); cursor: ns-resize; }
+    .h-s  { bottom: -6px; left: calc(50% - 6px); cursor: ns-resize; }
+    .h-w  { top: calc(50% - 6px); left: -6px; cursor: ew-resize; }
+    .h-e  { top: calc(50% - 6px); right: -6px; cursor: ew-resize; }
+    #crop-label {
+      position: absolute;
+      bottom: -28px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(15, 23, 42, 0.95);
+      border: 1px solid rgba(56, 189, 248, 0.5);
+      color: #38bdf8;
+      font-size: 11px;
+      font-family: monospace;
+      padding: 2px 8px;
+      border-radius: 4px;
+      white-space: nowrap;
+      pointer-events: none;
+    }
+    #pip-video { display: none; }
+    #welcome-card {
+      max-width: 500px;
+      background: rgba(15, 23, 42, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 12px;
+      padding: 24px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    #welcome-card h2 { font-size: 20px; color: #f8fafc; }
+    #welcome-card p { font-size: 13px; color: #94a3b8; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <span>🎯 Region Share Studio</span>
+      <span class="badge">Samsung DeX &amp; Chrome Web Edition</span>
+    </div>
+    <div class="controls">
+      <button id="start-btn" class="btn-primary">▶ Select Tab / Screen</button>
+      <button id="pip-btn" style="display:none;">🔲 Pop into Floating Window (PiP)</button>
+      <button id="fullscreen-btn" style="display:none;">⛶ Fullscreen Stream</button>
+      <button id="stop-btn" style="display:none;">⏹ Stop</button>
+    </div>
+  </header>
+
+  <main>
+    <div id="welcome-card">
+      <h2>Share Cropped Tab on Samsung DeX</h2>
+      <p>Works in official Google Chrome on Samsung Galaxy Fold 3 / Samsung DeX without needing any extension installed.</p>
+      <p>1. Tap <strong>Select Tab / Screen</strong>.<br>2. Drag the cyan box to crop only your dashboard.<br>3. Tap <strong>Pop into Floating Window (PiP)</strong> to get a floating borderless window for Google Meet.</p>
+      <button id="card-start-btn" class="btn-primary">Get Started</button>
+    </div>
+
+    <div id="stage-container" style="display:none;">
+      <video id="source-video" autoplay playsinline muted></video>
+      <div id="crop-box">
+        <div class="handle h-nw" data-dir="nw"></div>
+        <div class="handle h-ne" data-dir="ne"></div>
+        <div class="handle h-sw" data-dir="sw"></div>
+        <div class="handle h-se" data-dir="se"></div>
+        <div class="handle h-n" data-dir="n"></div>
+        <div class="handle h-s" data-dir="s"></div>
+        <div class="handle h-w" data-dir="w"></div>
+        <div class="handle h-e" data-dir="e"></div>
+        <div id="crop-label">1280 × 720</div>
+      </div>
+    </div>
+
+    <canvas id="cropped-canvas" style="display:none;"></canvas>
+    <video id="pip-video" autoplay playsinline muted></video>
+  </main>
+
+  <script>
+    const startBtn = document.getElementById('start-btn');
+    const cardStartBtn = document.getElementById('card-start-btn');
+    const pipBtn = document.getElementById('pip-btn');
+    const fullscreenBtn = document.getElementById('fullscreen-btn');
+    const stopBtn = document.getElementById('stop-btn');
+    const welcomeCard = document.getElementById('welcome-card');
+    const stageContainer = document.getElementById('stage-container');
+    const sourceVideo = document.getElementById('source-video');
+    const cropBox = document.getElementById('crop-box');
+    const cropLabel = document.getElementById('crop-label');
+    const croppedCanvas = document.getElementById('cropped-canvas');
+    const ctx = croppedCanvas.getContext('2d');
+    const pipVideo = document.getElementById('pip-video');
+
+    let mediaStream = null;
+    let pipStream = null;
+    let boxX = 0, boxY = 0, boxW = 100, boxH = 100;
+    let ratioX = 1, ratioY = 1;
+    let isDragging = false, dragAction = null, startMouseX = 0, startMouseY = 0, startBox = null;
+
+    async function startCapture() {
+      try {
+        mediaStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+        sourceVideo.srcObject = mediaStream;
+        await sourceVideo.play();
+
+        welcomeCard.style.display = 'none';
+        stageContainer.style.display = 'inline-block';
+        cropBox.style.display = 'block';
+        startBtn.style.display = 'none';
+        pipBtn.style.display = 'inline-flex';
+        fullscreenBtn.style.display = 'inline-flex';
+        stopBtn.style.display = 'inline-flex';
+
+        mediaStream.getVideoTracks()[0].onended = stopCapture;
+
+        sourceVideo.onloadedmetadata = () => {
+          syncInitialCropBox();
+          startCroppedPipStream();
+        };
+      } catch (err) {
+        alert('Could not start screen capture: ' + (err.message || 'Permission denied'));
+      }
+    }
+
+    function syncInitialCropBox() {
+      const vRect = sourceVideo.getBoundingClientRect();
+      ratioX = vRect.width / (sourceVideo.videoWidth || 1920);
+      ratioY = vRect.height / (sourceVideo.videoHeight || 1080);
+
+      // Default: crop right 70% of screen (skipping left sidebar)
+      boxW = vRect.width * 0.75;
+      boxH = vRect.height * 0.9;
+      boxX = vRect.width * 0.22;
+      boxY = vRect.height * 0.05;
+
+      updateCropBoxUI();
+    }
+
+    function updateCropBoxUI() {
+      const vRect = sourceVideo.getBoundingClientRect();
+      boxW = Math.max(30, Math.min(vRect.width, boxW));
+      boxH = Math.max(30, Math.min(vRect.height, boxH));
+      boxX = Math.max(0, Math.min(vRect.width - boxW, boxX));
+      boxY = Math.max(0, Math.min(vRect.height - boxH, boxY));
+
+      cropBox.style.left = `${Math.round(boxX)}px`;
+      cropBox.style.top = `${Math.round(boxY)}px`;
+      cropBox.style.width = `${Math.round(boxW)}px`;
+      cropBox.style.height = `${Math.round(boxH)}px`;
+
+      const videoPixW = Math.round(boxW / (ratioX || 1));
+      const videoPixH = Math.round(boxH / (ratioY || 1));
+      cropLabel.textContent = `${videoPixW} × ${videoPixH} px`;
+    }
+
+    // Pointer events for drag and resize
+    cropBox.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const h = e.target.closest('.handle');
+      dragAction = h ? h.dataset.dir : 'move';
+      startMouseX = e.clientX;
+      startMouseY = e.clientY;
+      startBox = { x: boxX, y: boxY, w: boxW, h: boxH };
+
+      window.addEventListener('pointermove', onPointerMove);
+      window.addEventListener('pointerup', onPointerUp);
+    });
+
+    function onPointerMove(e) {
+      if (!dragAction || !startBox) return;
+      const dx = e.clientX - startMouseX;
+      const dy = e.clientY - startMouseY;
+
+      if (dragAction === 'move') {
+        boxX = startBox.x + dx;
+        boxY = startBox.y + dy;
+      } else {
+        if (dragAction.includes('e')) boxW = Math.max(30, startBox.w + dx);
+        if (dragAction.includes('s')) boxH = Math.max(30, startBox.h + dy);
+        if (dragAction.includes('w')) {
+          const nw = Math.max(30, startBox.w - dx);
+          boxX = startBox.x + (startBox.w - nw);
+          boxW = nw;
+        }
+        if (dragAction.includes('n')) {
+          const nh = Math.max(30, startBox.h - dy);
+          boxY = startBox.y + (startBox.h - nh);
+          boxH = nh;
+        }
+      }
+      updateCropBoxUI();
+    }
+
+    function onPointerUp() {
+      dragAction = null;
+      startBox = null;
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+    }
+
+    function startCroppedPipStream() {
+      function renderLoop() {
+        if (!mediaStream) return;
+        requestAnimationFrame(renderLoop);
+
+        if (sourceVideo.readyState >= 2 && sourceVideo.videoWidth > 0) {
+          const sx = Math.max(0, boxX / (ratioX || 1));
+          const sy = Math.max(0, boxY / (ratioY || 1));
+          const sw = Math.max(1, boxW / (ratioX || 1));
+          const sh = Math.max(1, boxH / (ratioY || 1));
+
+          const bw = Math.round(sw);
+          const bh = Math.round(sh);
+
+          if (croppedCanvas.width !== bw || croppedCanvas.height !== bh) {
+            croppedCanvas.width = bw;
+            croppedCanvas.height = bh;
+          }
+
+          ctx.drawImage(sourceVideo, sx, sy, sw, sh, 0, 0, bw, bh);
+        }
+      }
+      requestAnimationFrame(renderLoop);
+
+      pipStream = croppedCanvas.captureStream(60);
+      pipVideo.srcObject = pipStream;
+      pipVideo.play();
+    }
+
+    async function popPictureInPicture() {
+      if (document.pictureInPictureElement) {
+        document.exitPictureInPicture();
+        return;
+      }
+      try {
+        await pipVideo.requestPictureInPicture();
+      } catch (e) {
+        alert('Picture in Picture failed: ' + e.message);
+      }
+    }
+
+    function stopCapture() {
+      if (mediaStream) {
+        mediaStream.getTracks().forEach(t => t.stop());
+        mediaStream = null;
+      }
+      if (document.pictureInPictureElement) {
+        document.exitPictureInPicture().catch(() => {});
+      }
+      welcomeCard.style.display = 'flex';
+      stageContainer.style.display = 'none';
+      cropBox.style.display = 'none';
+      startBtn.style.display = 'inline-flex';
+      pipBtn.style.display = 'none';
+      fullscreenBtn.style.display = 'none';
+      stopBtn.style.display = 'none';
+    }
+
+    startBtn.onclick = startCapture;
+    cardStartBtn.onclick = startCapture;
+    pipBtn.onclick = popPictureInPicture;
+    fullscreenBtn.onclick = () => croppedCanvas.requestFullscreen();
+    stopBtn.onclick = stopCapture;
+  </script>
+</body>
+</html>
