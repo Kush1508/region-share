@@ -82,10 +82,8 @@ async function triggerTabSelection(tab) {
         files: ['content.js']
       });
 
-      // Now start selection
-      await chrome.tabs.sendMessage(tab.id, { action: 'START_SELECTION' });
     } catch (injectErr) {
-      console.warn('[Region Share] Injection info:', injectErr);
+      // Script injection fallback handled
     }
   }
 }
@@ -135,7 +133,7 @@ async function handleOpenViewer(selection, sourceTab) {
         });
       });
     } catch (e) {
-      console.warn('[Region Share] tabCapture streamId info:', e);
+      // streamId fallback
     }
   }
 
@@ -185,7 +183,6 @@ async function handleOpenViewer(selection, sourceTab) {
     sessionData.windowId = win.id;
     return { success: true, sessionId, windowId: win.id };
   } catch (err) {
-    console.warn('[Region Share] Popup info:', err);
     return { success: false, error: err.message };
   }
 }

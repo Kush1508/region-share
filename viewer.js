@@ -121,7 +121,7 @@
       resetHudTimer();
       startCropperLoop();
     } catch (err) {
-      console.warn('[Viewer] Direct tab capture fallback:', err);
+      // Direct tab capture unavailable, manual picker ready
     }
   }
 
@@ -222,11 +222,10 @@
       startCropperLoop();
 
     } catch (err) {
-      console.warn('[Viewer] Capture failed or was cancelled:', err);
-      if (err.name === 'NotAllowedError') {
+      if (err && err.name === 'NotAllowedError') {
         statusMsg.textContent = 'Capture was cancelled. Please click above and select the source tab.';
       } else {
-        statusMsg.textContent = `Capture error: ${err.message || err}`;
+        statusMsg.textContent = 'Capture was cancelled or unavailable.';
       }
     } finally {
       startBtn.disabled = false;
