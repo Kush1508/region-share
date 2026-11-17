@@ -34,6 +34,7 @@
         "viewer.js",
         "viewer.css",
         "demo.html",
+        "demo.js",
         "content.css",
         "content.js"
       ],

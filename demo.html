@@ -236,14 +236,6 @@ await cropper.attachToElement("#card-metrics");</code></pre>
   </div>
 
   <script src="content.js"></script>
-  <script>
-    document.getElementById('trigger-crop-btn').addEventListener('click', () => {
-      if (typeof window.__regionShareStart === 'function') {
-        window.__regionShareStart();
-      } else {
-        window.dispatchEvent(new CustomEvent('region-share-start'));
-      }
-    });
-  </script>
+  <script src="demo.js"></script>
 </body>
 </html>
