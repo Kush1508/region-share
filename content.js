@@ -445,6 +445,25 @@
   }
 
   /**
+   * Safely dispatches a message to the extension runtime, gracefully ignoring
+   * any errors if the extension was reloaded in developer mode.
+   */
+  function safeSendMessage(msg) {
+    try {
+      if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id) {
+        const res = chrome.runtime.sendMessage(msg);
+        if (res && typeof res.catch === 'function') {
+          res.catch(() => {});
+        }
+        return res;
+      }
+    } catch (e) {
+      cleanupTracking();
+    }
+    return null;
+  }
+
+  /**
    * Finalizes the selected area and initiates streaming popup
    */
   function finalizeSelection({ isCustomRegion, element, rect }) {
@@ -458,7 +477,7 @@
     }
 
     // Send selection details to background script to launch popup
-    chrome.runtime.sendMessage({
+    safeSendMessage({
       action: 'OPEN_VIEWER',
       selection: {
         isCustomRegion,
@@ -475,8 +494,6 @@
         },
         elementTag: element ? getElementLabel(element) : 'Custom Box'
       }
-    }).catch(err => {
-      console.warn('[Region Share] Error opening viewer popup:', err);
     });
   }
 
@@ -493,14 +510,14 @@
 
       requestAnimationFrame(() => {
         rafPending = false;
-        chrome.runtime.sendMessage({
+        safeSendMessage({
           action: 'RECT_UPDATE',
           viewport: {
             width: window.innerWidth,
             height: window.innerHeight,
             devicePixelRatio: window.devicePixelRatio || 1
           }
-        }).catch(() => {});
+        });
       });
     };
 
@@ -520,14 +537,14 @@
 
       requestAnimationFrame(() => {
         rafPending = false;
-        chrome.runtime.sendMessage({
+        safeSendMessage({
           action: 'RECT_UPDATE',
           viewport: {
             width: window.innerWidth,
             height: window.innerHeight,
             devicePixelRatio: window.devicePixelRatio || 1
           }
-        }).catch(() => {});
+        });
       });
     };
 
