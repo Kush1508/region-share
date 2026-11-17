@@ -2,6 +2,8 @@
  * Region Share - Cropped Stream Viewer
  * Captures the selected browser tab and renders a crisp, high-DPI
  * real-time cropped canvas of the targeted element or custom region.
+ * Compensates for Chrome compositor letterboxing/pillarboxing and provides
+ * an interactive live crop adjuster.
  */
 
 (() => {
@@ -23,17 +25,33 @@
   const streamHud = document.getElementById('stream-hud');
   const hudDims = document.getElementById('hud-dims');
   const hudFps = document.getElementById('hud-fps');
+  const adjustCropBtn = document.getElementById('adjust-crop-btn');
   const fitToggleBtn = document.getElementById('fit-toggle-btn');
   const stopBtn = document.getElementById('stop-btn');
+
+  // Interactive Live Crop Adjuster elements
+  const cropAdjuster = document.getElementById('crop-adjuster');
+  const adjusterVideo = document.getElementById('adjuster-video');
+  const adjusterContainer = document.getElementById('adjuster-container');
+  const adjBox = document.getElementById('adj-box');
+  const adjLabel = document.getElementById('adj-label');
+  const adjFullBtn = document.getElementById('adj-full-btn');
+  const adjResetBtn = document.getElementById('adj-reset-btn');
+  const adjDoneBtn = document.getElementById('adj-done-btn');
 
   // Session & Tracking State
   let sessionId = null;
   let sessionData = null;
   let currentRect = { x: 0, y: 0, width: 800, height: 600 };
+  let initialRect = null;
   let currentViewport = { width: window.innerWidth, height: window.innerHeight, devicePixelRatio: 1 };
+  let manualVideoCrop = null; // Fine-tuned video-pixel crop from the adjuster
   let isStreaming = false;
   let mediaStream = null;
   let hudHideTimeout = null;
+
+  // Scale mode: 'fit' (default), 'fill', 'native' (1:1)
+  let scaleMode = 'fit';
 
   // FPS calculation
   let frameCount = 0;
@@ -47,7 +65,6 @@
     sessionId = params.get('session');
 
     if (!sessionId) {
-      // Allow standalone usage without prior element selection
       applySessionData({
         sourceTabTitle: 'Screen / Tab / Window',
         selection: {
@@ -80,7 +97,6 @@
         statusMsg.textContent = 'Session data not found or expired. Please re-select the region.';
       }
     } catch (err) {
-      console.warn('[Viewer] Could not retrieve session data:', err);
       statusMsg.textContent = 'Unable to connect to extension background service.';
     }
   }
@@ -113,7 +129,6 @@
 
       isStreaming = true;
 
-      // Reveal live canvas & HUD, hide setup UI
       setupCard.classList.add('hidden');
       cropCanvas.classList.remove('hidden');
       streamHud.classList.remove('hidden');
@@ -121,7 +136,7 @@
       resetHudTimer();
       startCropperLoop();
     } catch (err) {
-      // Direct tab capture unavailable, manual picker ready
+      // Direct tab capture fallback to manual picker
     }
   }
 
@@ -138,6 +153,7 @@
       const { rect, viewport, elementTag } = data.selection;
       if (rect) {
         currentRect = { ...rect };
+        if (!initialRect) initialRect = { ...rect };
         targetDimsEl.textContent = `${Math.round(rect.width)} × ${Math.round(rect.height)} px`;
         hudDims.textContent = `${Math.round(rect.width)} × ${Math.round(rect.height)}`;
       }
@@ -156,12 +172,14 @@
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg.action === 'VIEWER_RECT_UPDATE') {
       if (sessionData && msg.tabId && msg.tabId !== sessionData.sourceTabId) {
-        return; // Message from a different tab
+        return;
       }
 
       if (msg.rect) {
         currentRect = msg.rect;
-        hudDims.textContent = `${Math.round(currentRect.width)} × ${Math.round(currentRect.height)}`;
+        if (!manualVideoCrop) {
+          hudDims.textContent = `${Math.round(currentRect.width)} × ${Math.round(currentRect.height)}`;
+        }
       }
       if (msg.viewport) {
         currentViewport = msg.viewport;
@@ -170,14 +188,13 @@
   });
 
   /**
-   * Starts screen capture and triggers cropped canvas render loop
+   * Starts screen capture with fallback browser picker
    */
   async function startCapture() {
     statusMsg.textContent = '';
     startBtn.disabled = true;
 
     try {
-      // Trigger browser screen/tab capture dialog with universal fallback
       try {
         mediaStream = await navigator.mediaDevices.getDisplayMedia({
           video: {
@@ -193,7 +210,6 @@
         });
       }
 
-      // Update window title so it's super easy to pick in Google Meet
       document.title = 'Region Share - Cropped Stream (Share this window in Meet)';
 
       const videoTrack = mediaStream.getVideoTracks()[0];
@@ -201,7 +217,6 @@
         throw new Error('No video track received from capture.');
       }
 
-      // Handle stream end when user clicks Chrome's native "Stop sharing" bar
       videoTrack.onended = () => {
         stopCapture('Source capture ended in browser.');
       };
@@ -211,14 +226,11 @@
 
       isStreaming = true;
 
-      // Reveal live canvas & HUD, hide setup UI
       setupCard.classList.add('hidden');
       cropCanvas.classList.remove('hidden');
       streamHud.classList.remove('hidden');
 
       resetHudTimer();
-
-      // Launch real-time frame cropping loop
       startCropperLoop();
 
     } catch (err) {
@@ -233,6 +245,57 @@
   }
 
   /**
+   * Calculates the exact video stream bounding coordinates for the crop area,
+   * accurately compensating for letterbox/pillarbox offsets added by Chrome's compositor.
+   */
+  function calculateVideoCropCoords(videoW, videoH) {
+    if (manualVideoCrop) {
+      return {
+        sx: Math.max(0, Math.min(videoW - 1, manualVideoCrop.sx)),
+        sy: Math.max(0, Math.min(videoH - 1, manualVideoCrop.sy)),
+        sw: Math.max(1, Math.min(videoW - manualVideoCrop.sx, manualVideoCrop.sw)),
+        sh: Math.max(1, Math.min(videoH - manualVideoCrop.sy, manualVideoCrop.sh)),
+        contentW: videoW,
+        contentH: videoH,
+        offsetX: 0,
+        offsetY: 0
+      };
+    }
+
+    const vpW = currentViewport.width || 1920;
+    const vpH = currentViewport.height || 1080;
+
+    const videoAspect = videoW / videoH;
+    const viewportAspect = vpW / vpH;
+
+    let contentW = videoW;
+    let contentH = videoH;
+    let offsetX = 0;
+    let offsetY = 0;
+
+    // Detect if Chrome letterboxed (horizontal bars) or pillarboxed (vertical bars)
+    if (viewportAspect > videoAspect + 0.001) {
+      contentW = videoW;
+      contentH = videoW / viewportAspect;
+      offsetY = (videoH - contentH) / 2;
+    } else if (viewportAspect < videoAspect - 0.001) {
+      contentH = videoH;
+      contentW = videoH * viewportAspect;
+      offsetX = (videoW - contentW) / 2;
+    }
+
+    const scaleX = contentW / vpW;
+    const scaleY = contentH / vpH;
+
+    const sx = Math.max(0, Math.min(videoW - 1, offsetX + (currentRect.x * scaleX)));
+    const sy = Math.max(0, Math.min(videoH - 1, offsetY + (currentRect.y * scaleY)));
+    const sw = Math.max(1, Math.min(videoW - sx, currentRect.width * scaleX));
+    const sh = Math.max(1, Math.min(videoH - sy, currentRect.height * scaleY));
+
+    return { sx, sy, sw, sh, contentW, contentH, offsetX, offsetY };
+  }
+
+  /**
    * High-DPI real-time cropping render loop
    */
   function startCropperLoop() {
@@ -244,33 +307,22 @@
       const videoW = sourceVideo.videoWidth;
       const videoH = sourceVideo.videoHeight;
 
-      if (videoW > 0 && videoH > 0 && currentViewport.width > 0 && currentViewport.height > 0) {
-        // Compute coordinate scaling factor between video stream and browser viewport
-        const scaleX = videoW / currentViewport.width;
-        const scaleY = videoH / currentViewport.height;
+      if (videoW > 0 && videoH > 0) {
+        const crop = calculateVideoCropCoords(videoW, videoH);
 
-        // Source crop rectangle coordinates in stream pixel space
-        const sx = Math.max(0, Math.min(videoW - 1, currentRect.x * scaleX));
-        const sy = Math.max(0, Math.min(videoH - 1, currentRect.y * scaleY));
-        const sw = Math.max(1, Math.min(videoW - sx, currentRect.width * scaleX));
-        const sh = Math.max(1, Math.min(videoH - sy, currentRect.height * scaleY));
+        const targetBufferW = Math.round(crop.sw);
+        const targetBufferH = Math.round(crop.sh);
 
-        const targetBufferW = Math.round(sw);
-        const targetBufferH = Math.round(sh);
-
-        // Adjust canvas resolution dynamically to match source crop resolution 1:1
         if (cropCanvas.width !== targetBufferW || cropCanvas.height !== targetBufferH) {
           cropCanvas.width = targetBufferW;
           cropCanvas.height = targetBufferH;
-          // Crisp high quality image smoothing
           ctx.imageSmoothingEnabled = true;
           ctx.imageSmoothingQuality = 'high';
         }
 
-        // Draw cropped section directly onto high-DPI canvas
         ctx.drawImage(
           sourceVideo,
-          sx, sy, sw, sh,
+          crop.sx, crop.sy, crop.sw, crop.sh,
           0, 0, targetBufferW, targetBufferH
         );
 
@@ -285,7 +337,6 @@
         }
       }
 
-      // Schedule next frame with requestVideoFrameCallback or fallback to rAF
       if ('requestVideoFrameCallback' in sourceVideo) {
         sourceVideo.requestVideoFrameCallback(renderFrame);
       } else {
@@ -306,6 +357,10 @@
   function stopCapture(notice) {
     isStreaming = false;
 
+    if (cropAdjuster && !cropAdjuster.classList.contains('hidden')) {
+      closeAdjuster();
+    }
+
     if (mediaStream) {
       mediaStream.getTracks().forEach(track => track.stop());
       mediaStream = null;
@@ -315,7 +370,6 @@
       sourceVideo.srcObject = null;
     }
 
-    // Reset canvas and clear
     if (cropCanvas) {
       ctx.clearRect(0, 0, cropCanvas.width, cropCanvas.height);
       cropCanvas.classList.add('hidden');
@@ -338,20 +392,205 @@
       clearTimeout(hudHideTimeout);
     }
     hudHideTimeout = setTimeout(() => {
-      if (isStreaming) {
+      if (isStreaming && cropAdjuster.classList.contains('hidden')) {
         streamHud.classList.add('fade-out');
       }
     }, 2500);
   }
 
-  // Event Listeners
+  /**
+   * Cycle display modes: Fit (contain) -> Fill (cover) -> 1:1 Native
+   */
+  function cycleScaleMode() {
+    if (scaleMode === 'fit') {
+      scaleMode = 'fill';
+      cropCanvas.className = 'fill-mode';
+      fitToggleBtn.querySelector('span').textContent = 'Fill';
+    } else if (scaleMode === 'fill') {
+      scaleMode = 'native';
+      cropCanvas.className = 'native-mode';
+      fitToggleBtn.querySelector('span').textContent = '1:1';
+    } else {
+      scaleMode = 'fit';
+      cropCanvas.className = '';
+      fitToggleBtn.querySelector('span').textContent = 'Fit';
+    }
+  }
+
+  // ==========================================
+  // Interactive Live Crop Adjuster
+  // ==========================================
+  let adjBoxLeft = 0;
+  let adjBoxTop = 0;
+  let adjBoxWidth = 100;
+  let adjBoxHeight = 100;
+  let adjRatioX = 1;
+  let adjRatioY = 1;
+  let adjDragAction = null;
+  let adjDragStartX = 0;
+  let adjDragStartY = 0;
+  let adjStartBox = null;
+
+  async function openAdjuster() {
+    if (!isStreaming || !mediaStream) return;
+
+    adjusterVideo.srcObject = mediaStream;
+    await adjusterVideo.play();
+    cropAdjuster.classList.remove('hidden');
+
+    // Wait for adjuster video layout
+    requestAnimationFrame(() => {
+      syncAdjusterBoxFromCurrent();
+    });
+  }
+
+  function closeAdjuster() {
+    cropAdjuster.classList.add('hidden');
+    adjusterVideo.pause();
+    adjusterVideo.srcObject = null;
+    adjDragAction = null;
+  }
+
+  function syncAdjusterBoxFromCurrent() {
+    const videoW = adjusterVideo.videoWidth || sourceVideo.videoWidth || 1920;
+    const videoH = adjusterVideo.videoHeight || sourceVideo.videoHeight || 1080;
+    const vRect = adjusterVideo.getBoundingClientRect();
+
+    adjRatioX = vRect.width / videoW;
+    adjRatioY = vRect.height / videoH;
+
+    const crop = calculateVideoCropCoords(videoW, videoH);
+
+    adjBoxLeft = crop.sx * adjRatioX;
+    adjBoxTop = crop.sy * adjRatioY;
+    adjBoxWidth = crop.sw * adjRatioX;
+    adjBoxHeight = crop.sh * adjRatioY;
+
+    updateAdjBoxDisplay();
+  }
+
+  function updateAdjBoxDisplay() {
+    const vRect = adjusterVideo.getBoundingClientRect();
+    const maxW = vRect.width || 1;
+    const maxH = vRect.height || 1;
+
+    // Clamp inside video rect
+    adjBoxWidth = Math.max(24, Math.min(maxW, adjBoxWidth));
+    adjBoxHeight = Math.max(24, Math.min(maxH, adjBoxHeight));
+    adjBoxLeft = Math.max(0, Math.min(maxW - adjBoxWidth, adjBoxLeft));
+    adjBoxTop = Math.max(0, Math.min(maxH - adjBoxHeight, adjBoxTop));
+
+    adjBox.style.left = `${Math.round(adjBoxLeft)}px`;
+    adjBox.style.top = `${Math.round(adjBoxTop)}px`;
+    adjBox.style.width = `${Math.round(adjBoxWidth)}px`;
+    adjBox.style.height = `${Math.round(adjBoxHeight)}px`;
+
+    const cropW = Math.round(adjBoxWidth / (adjRatioX || 1));
+    const cropH = Math.round(adjBoxHeight / (adjRatioY || 1));
+    adjLabel.textContent = `${cropW} × ${cropH} px`;
+  }
+
+  // Adjuster Pointer Interactions (Move & Resize)
+  adjBox.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const handle = e.target.closest('.adj-h');
+    adjDragAction = handle ? handle.dataset.dir : 'move';
+    adjDragStartX = e.clientX;
+    adjDragStartY = e.clientY;
+    adjStartBox = {
+      left: adjBoxLeft,
+      top: adjBoxTop,
+      width: adjBoxWidth,
+      height: adjBoxHeight
+    };
+
+    window.addEventListener('pointermove', onAdjusterPointerMove);
+    window.addEventListener('pointerup', onAdjusterPointerUp);
+  });
+
+  function onAdjusterPointerMove(e) {
+    if (!adjDragAction || !adjStartBox) return;
+
+    const dx = e.clientX - adjDragStartX;
+    const dy = e.clientY - adjDragStartY;
+
+    if (adjDragAction === 'move') {
+      adjBoxLeft = adjStartBox.left + dx;
+      adjBoxTop = adjStartBox.top + dy;
+    } else {
+      // Resize handle directions
+      if (adjDragAction.includes('e')) {
+        adjBoxWidth = Math.max(24, adjStartBox.width + dx);
+      }
+      if (adjDragAction.includes('s')) {
+        adjBoxHeight = Math.max(24, adjStartBox.height + dy);
+      }
+      if (adjDragAction.includes('w')) {
+        const newW = Math.max(24, adjStartBox.width - dx);
+        adjBoxLeft = adjStartBox.left + (adjStartBox.width - newW);
+        adjBoxWidth = newW;
+      }
+      if (adjDragAction.includes('n')) {
+        const newH = Math.max(24, adjStartBox.height - dy);
+        adjBoxTop = adjStartBox.top + (adjStartBox.height - newH);
+        adjBoxHeight = newH;
+      }
+    }
+
+    updateAdjBoxDisplay();
+  }
+
+  function onAdjusterPointerUp() {
+    adjDragAction = null;
+    adjStartBox = null;
+    window.removeEventListener('pointermove', onAdjusterPointerMove);
+    window.removeEventListener('pointerup', onAdjusterPointerUp);
+  }
+
+  // Adjuster action buttons
+  adjDoneBtn.addEventListener('click', () => {
+    const rx = adjRatioX || 1;
+    const ry = adjRatioY || 1;
+
+    manualVideoCrop = {
+      sx: Math.round(adjBoxLeft / rx),
+      sy: Math.round(adjBoxTop / ry),
+      sw: Math.round(adjBoxWidth / rx),
+      sh: Math.round(adjBoxHeight / ry)
+    };
+
+    hudDims.textContent = `${Math.round(manualVideoCrop.sw)} × ${Math.round(manualVideoCrop.sh)}`;
+    closeAdjuster();
+  });
+
+  adjFullBtn.addEventListener('click', () => {
+    const videoW = adjusterVideo.videoWidth || sourceVideo.videoWidth || 1920;
+    const videoH = adjusterVideo.videoHeight || sourceVideo.videoHeight || 1080;
+    const crop = calculateVideoCropCoords(videoW, videoH);
+
+    adjBoxLeft = crop.offsetX * adjRatioX;
+    adjBoxTop = crop.offsetY * adjRatioY;
+    adjBoxWidth = crop.contentW * adjRatioX;
+    adjBoxHeight = crop.contentH * adjRatioY;
+
+    updateAdjBoxDisplay();
+  });
+
+  adjResetBtn.addEventListener('click', () => {
+    manualVideoCrop = null;
+    if (initialRect) {
+      currentRect = { ...initialRect };
+    }
+    syncAdjusterBoxFromCurrent();
+  });
+
+  // Base Event Listeners
   startBtn.addEventListener('click', startCapture);
   stopBtn.addEventListener('click', () => stopCapture('Stream stopped by user.'));
-
-  fitToggleBtn.addEventListener('click', () => {
-    const isFill = cropCanvas.classList.toggle('fill-mode');
-    fitToggleBtn.querySelector('span').textContent = isFill ? 'Fill' : 'Fit';
-  });
+  adjustCropBtn.addEventListener('click', openAdjuster);
+  fitToggleBtn.addEventListener('click', cycleScaleMode);
 
   window.addEventListener('mousemove', () => {
     if (isStreaming) {
@@ -359,10 +598,13 @@
     }
   });
 
-  // Keyboard shortcut Esc inside viewer to stop
   window.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && isStreaming) {
-      stopCapture('Stream stopped via Escape key.');
+    if (e.key === 'Escape') {
+      if (cropAdjuster && !cropAdjuster.classList.contains('hidden')) {
+        closeAdjuster();
+      } else if (isStreaming) {
+        stopCapture('Stream stopped via Escape key.');
+      }
     }
   });
 
